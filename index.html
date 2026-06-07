@@ -605,11 +605,10 @@ function renderApp(){
         <input id="memberGameId" placeholder="ID Game" class="w-full border p-2 mb-3 rounded"/>
         <input id="memberBirthYear" type="number" placeholder="Năm sinh" min="1900" max="2100" class="w-full border p-2 mb-3 rounded"/>
         <label class="block text-sm font-medium text-gray-700 mb-1">Hoa đã có</label>
-        <input id="memberFlowerSearch" type="text" placeholder="Tìm hoa để chọn..." class="w-full border p-2 mb-2 rounded text-sm" oninput="filterMemberFlowerOptions()"/>
-        <select id="memberFlowers" multiple size="8" class="w-full border p-2 mb-4 rounded h-40">
-          ${flowerFiles.map(filename => `<option value="${filename}" ${editingMemberFlowers.includes(filename) ? 'selected' : ''}>${normalizeFlowerName(filename)}</option>`).join('')}
-        </select>
-        <p class="text-xs text-gray-500 -mt-2 mb-4">Giữ Ctrl/Cmd để chọn nhiều hoa.</p>
+        <input id="memberFlowerSearch" type="text" placeholder="Tìm hoa để chọn..." class="w-full border p-2 mb-2 rounded text-sm" oninput="renderMemberFlowerOptions()"/>
+        <div id="memberFlowerOptions" class="w-full border p-2 mb-2 rounded h-40 overflow-y-auto bg-gray-50"></div>
+        <div id="memberFlowerSelectedCount" class="text-xs text-green-700 mb-3">Đã chọn: 0 hoa</div>
+        <p class="text-xs text-gray-500 -mt-1 mb-4">Tìm hoa và tick nhiều lựa chọn; danh sách sẽ giữ các hoa đã chọn trước đó.</p>
         
         <div class="flex gap-2">
           <button onclick="saveMember()" class="flex-1 bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Lưu</button>
@@ -993,15 +992,48 @@ function historyUI(){
 }
 
 // ===== ACTION =====
-function filterMemberFlowerOptions(){
+function renderMemberFlowerOptions(){
   const query = (document.getElementById('memberFlowerSearch')?.value || '').toLowerCase().trim()
-  const select = document.getElementById('memberFlowers')
-  if(!select) return
+  const container = document.getElementById('memberFlowerOptions')
+  const countBox = document.getElementById('memberFlowerSelectedCount')
+  if(!container) return
 
-  Array.from(select.options).forEach(option => {
-    const text = option.text.toLowerCase()
-    option.style.display = text.includes(query) ? '' : 'none'
+  const filtered = flowerFiles.filter(filename => {
+    const text = normalizeFlowerName(filename).toLowerCase()
+    return !query || text.includes(query) || filename.toLowerCase().includes(query)
   })
+
+  container.innerHTML = filtered.map(filename => {
+    const checked = editingMemberFlowers.includes(filename)
+    return `
+      <label class="flex items-center gap-2 rounded border border-gray-200 bg-white p-2 hover:bg-gray-50 text-sm cursor-pointer">
+        <input type="checkbox" class="member-flower-toggle h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500" value="${filename}" ${checked ? 'checked' : ''} />
+        <span class="flex-1">${normalizeFlowerName(filename)}</span>
+        ${checked ? '<span class="text-green-700 text-xs">✓</span>' : ''}
+      </label>
+    `
+  }).join('')
+
+  if(countBox) {
+    countBox.textContent = `Đã chọn: ${editingMemberFlowers.length} hoa`
+  }
+
+  if(!container.__memberFlowerHandler) {
+    container.__memberFlowerHandler = (e) => {
+      const toggle = e.target.closest('.member-flower-toggle')
+      if(!toggle) return
+
+      const value = toggle.value
+      if(toggle.checked) {
+        if(!editingMemberFlowers.includes(value)) editingMemberFlowers.push(value)
+      } else {
+        editingMemberFlowers = editingMemberFlowers.filter(item => item !== value)
+      }
+
+      renderMemberFlowerOptions()
+    }
+    container.addEventListener('change', container.__memberFlowerHandler)
+  }
 }
 
 function openMemberModal(){
@@ -1011,12 +1043,13 @@ function openMemberModal(){
   renderApp()
   setTimeout(()=>{
     document.getElementById('memberName')?.focus()
+    renderMemberFlowerOptions()
   }, 100)
 }
 
 function editMember(index){
   editingMemberIndex = index
-  editingMemberFlowers = getMemberFlowers(members[index])
+  editingMemberFlowers = [...getMemberFlowers(members[index])]
   showMemberModal = true
   renderApp()
   setTimeout(()=>{
@@ -1026,6 +1059,7 @@ function editMember(index){
     document.getElementById('memberIngame').value = m.ingame || ''
     document.getElementById('memberGameId').value = m.gameId || ''
     document.getElementById('memberBirthYear').value = m.birthYear || ''
+    renderMemberFlowerOptions()
   }, 100)
 }
 
@@ -1054,7 +1088,7 @@ function saveMember(){
     return
   }
   
-  let selectedFlowers = Array.from(document.getElementById('memberFlowers')?.selectedOptions || []).map(option => option.value)
+  let selectedFlowers = Array.from(new Set(editingMemberFlowers))
   let memberObj = {name, zalo, ingame, gameId, birthYear, flowers: selectedFlowers}
   
   if(editingMemberIndex >= 0) {
